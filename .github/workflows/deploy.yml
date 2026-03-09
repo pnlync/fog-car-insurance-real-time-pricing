@@ -39,40 +39,53 @@ jobs:
             --template-file .aws-sam/build/template.yaml \
             --stack-name "$STACK_NAME" \
             --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides ProjectName="$PROJECT_NAME"
 
-      - name: Resolve ECR repository URI
-        id: stack
+      - name: Ensure dashboard Function URL
         run: |
-          REPO_URI=$(aws cloudformation describe-stacks \
+          FUNCTION_NAME=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='DashboardRepositoryUri'].OutputValue | [0]" \
+            --query "Stacks[0].Outputs[?OutputKey=='DashboardFunctionName'].OutputValue | [0]" \
             --output text)
-          echo "repo_uri=$REPO_URI" >> "$GITHUB_OUTPUT"
 
-      - uses: aws-actions/amazon-ecr-login@v2
+          if aws lambda get-function-url-config \
+            --function-name "$FUNCTION_NAME" \
+            >/dev/null 2>&1; then
+            aws lambda update-function-url-config \
+              --function-name "$FUNCTION_NAME" \
+              --auth-type NONE \
+              --cors '{"AllowOrigins":["*"],"AllowMethods":["GET","POST"],"AllowHeaders":["*"]}'
+          else
+            aws lambda create-function-url-config \
+              --function-name "$FUNCTION_NAME" \
+              --auth-type NONE \
+              --cors '{"AllowOrigins":["*"],"AllowMethods":["GET","POST"],"AllowHeaders":["*"]}'
+          fi
 
-      - name: Build and push dashboard image
-        env:
-          REPO_URI: ${{ steps.stack.outputs.repo_uri }}
-        run: |
-          docker build -f cloud/dashboard/Dockerfile -t "$REPO_URI:latest" .
-          docker push "$REPO_URI:latest"
+          POLICY_JSON=$(aws lambda get-policy --function-name "$FUNCTION_NAME" --query 'Policy' --output text 2>/dev/null || true)
+          if ! printf '%s' "$POLICY_JSON" | grep -q '"Sid":"dashboard-url-public"'; then
+            aws lambda add-permission \
+              --function-name "$FUNCTION_NAME" \
+              --statement-id dashboard-url-public \
+              --action lambda:InvokeFunctionUrl \
+              --principal '*' \
+              --function-url-auth-type NONE
+          fi
 
-      - name: Deploy App Runner service through SAM
-        env:
-          REPO_URI: ${{ steps.stack.outputs.repo_uri }}
-        run: |
-          sam deploy \
-            --template-file .aws-sam/build/template.yaml \
-            --stack-name "$STACK_NAME" \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              ProjectName="$PROJECT_NAME" \
-              DashboardImageIdentifier="$REPO_URI:latest"
+          if ! printf '%s' "$POLICY_JSON" | grep -q '"Sid":"dashboard-url-public-invoke"'; then
+            aws lambda add-permission \
+              --function-name "$FUNCTION_NAME" \
+              --statement-id dashboard-url-public-invoke \
+              --action lambda:InvokeFunction \
+              --principal '*' \
+              --invoked-via-function-url
+          fi
+
+          DASHBOARD_URL=$(aws lambda get-function-url-config \
+            --function-name "$FUNCTION_NAME" \
+            --query 'FunctionUrl' \
+            --output text)
+          echo "Dashboard URL: $DASHBOARD_URL"

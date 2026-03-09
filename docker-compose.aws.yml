@@ -1,0 +1,13 @@
+services:
+  fog:
+    environment:
+      FOG_CONFIG_PATH: fog/config.yaml
+      MQTT_MODE: aws_iot
+      AWS_IOT_ENDPOINT: "a3uimb358zmu0r-ats.iot.us-east-1.amazonaws.com"
+      AWS_IOT_CA_PATH: /certs/AmazonRootCA1.pem
+      AWS_IOT_CERT_PATH: /certs/2ad408f15251f1880bbadd38ca0de686572122d0fe7573417542d84f7f84d6d8-certificate.pem.crt
+      AWS_IOT_KEY_PATH: /certs/2ad408f15251f1880bbadd38ca0de686572122d0fe7573417542d84f7f84d6d8-private.pem.key
+      AWS_IOT_CLIENT_ID: fog-node-1
+      AWS_IOT_TOPIC_PREFIX: insurance
+    volumes:
+      - /Users/peterlynch/Documents/AWS/aws-iot/fog-node-1:/certs:ro

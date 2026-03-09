@@ -42,22 +42,22 @@ flowchart LR
     B -->|MQTT over TLS| C["AWS IoT Core"]
     C --> D["IoT Rule"]
     D --> E["Amazon SQS"]
-    E --> F["AWS Lambda\n写入 Timestream"]
-    F --> G["Amazon Timestream"]
-    G --> H["Dash Dashboard\nAWS App Runner"]
+    E --> F["AWS Lambda\n写入 DynamoDB"]
+    F --> G["Amazon DynamoDB"]
+    G --> H["Dashboard Web UI\nLambda Function URL"]
 ```
 
 ### Demo Mode 旁路链路
 
 ```mermaid
 flowchart LR
-    A["Dash Dashboard\nStart Demo"] --> B["StartDemo Lambda"]
+    A["Dashboard Web UI\nStart Demo"] --> B["StartDemo Lambda"]
     B --> C["Step Functions"]
     C --> D["GenerateDemoTick Lambda"]
     D --> E["Amazon SQS"]
-    E --> F["AWS Lambda\n写入 Timestream"]
-    F --> G["Amazon Timestream"]
-    G --> H["Dash Dashboard\n按 demo_session_id 展示"]
+    E --> F["AWS Lambda\n写入 DynamoDB"]
+    F --> G["Amazon DynamoDB"]
+    G --> H["Dashboard Web UI\n按 demo_session_id 展示"]
 ```
 
 这两条链路的关系是：
@@ -111,8 +111,8 @@ Cloud 层负责：
 
 - IoT Core 与 MQTT 很匹配
 - SQS + Lambda 非常适合讲“scalable backend”
-- Timestream 非常适合时间序列指标查询
-- App Runner 对 Python Dashboard 部署成本低
+- DynamoDB 非常适合时间序列指标查询
+- Lambda Function URL 对 Python Dashboard 部署成本低
 
 ## 5. 数据集在项目中的角色
 
@@ -349,14 +349,14 @@ premium_multiplier = 1.0 + 0.5 * risk_score
 
 ### 11.1 `cloud/lambda_ingest/app.py`
 
-这是从 SQS 写入 Timestream 的 Lambda。
+这是从 SQS 写入 DynamoDB 的 Lambda。
 
 职责：
 
 - 从 SQS 读取消息
 - 校验字段是否齐全
 - 自动补默认 `mode`
-- 将 payload 转为 Timestream multi-measure record
+- 将 payload 转为 DynamoDB multi-measure record
 - 写入 `driver_pricing.telemetry_windows`
 
 这个 Lambda 同时服务两条路径：
@@ -366,7 +366,7 @@ premium_multiplier = 1.0 + 0.5 * risk_score
 
 也就是说 demo mode 是复用现有 ingest 逻辑的，而不是另起一套后端。
 
-### 11.2 为什么使用 Timestream
+### 11.2 为什么使用 DynamoDB
 
 因为写入的数据本质上是：
 
@@ -385,7 +385,7 @@ premium_multiplier = 1.0 + 0.5 * risk_score
 - 主栈本身就是 Python
 - 数据可视化开箱即用
 - 与 boto3 集成简单
-- 容器化后部署到 App Runner 成本低
+- 容器化后部署到 Lambda Function URL 成本低
 
 ### 12.2 `cloud/dashboard/queries.py`
 
@@ -488,27 +488,25 @@ coursework 主链路更强调 edge/fog/cloud 架构本身。
 它负责创建：
 
 - SQS 队列
-- Timestream database/table
+- DynamoDB database/table
 - ingest Lambda
 - demo mode 相关 Lambda
 - Step Functions
 - DynamoDB demo session 表
 - IoT Topic Rule
-- ECR repository
-- App Runner service
+- Dashboard Lambda function
+- Lambda Function URL
 - IAM roles
 
-### 14.2 为什么 App Runner 分两次部署
+### 14.2 为什么现在只需要一次 SAM 部署
 
-因为 App Runner 服务依赖于一个已经存在的 dashboard 镜像。
+因为 dashboard 不再通过容器托管服务运行，而是直接由 Lambda 提供网页和 JSON API。
 
 所以部署流程是：
 
-1. 先 `sam deploy` 创建 ECR 仓库和后端资源
-2. 构建并推送 dashboard 镜像到 ECR
-3. 再次 `sam deploy`，把镜像 URI 传给 `DashboardImageIdentifier`
-
-这也是 `deploy.yml` 里采用“两次 SAM 部署”的原因。
+1. 先 `sam deploy` 创建后端资源和 dashboard Lambda
+2. 再通过 AWS CLI 创建或更新 dashboard 的 Function URL
+3. 最后补充公网调用权限
 
 ## 15. CI/CD 详解
 
@@ -529,10 +527,10 @@ CD 负责：
 
 - 配置 AWS 凭证
 - 执行 `sam build`
-- 首次部署基础设施
-- 获取 ECR repository URI
-- 构建并推送 dashboard 镜像
-- 再次部署 App Runner
+- 部署基础设施和 dashboard Lambda
+- 获取 `DashboardFunctionName`
+- 创建或更新 Function URL
+- 补充公网访问权限
 
 ### 15.3 为什么这套流程合适
 
@@ -605,7 +603,7 @@ CD 负责：
 因此它故意做了以下取舍：
 
 - 使用解释型规则而不是复杂 ML 模型
-- Dashboard 直接查询 Timestream，而不是再做独立 API 服务
+- Dashboard 直接查询 DynamoDB，而不是再做独立 API 服务
 - demo mode 用 Lambda 生成聚合窗口，而不是完全复刻本地 edge/fog 进程
 - IoT Core device certificate 仍建议手工 bootstrap
 

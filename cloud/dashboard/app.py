@@ -78,7 +78,7 @@ app.layout = html.Div(
     className="page",
     children=[
         html.H1("Real-Time Car Insurance Pricing Dashboard"),
-        html.P("Fog-processed driving risk telemetry stored in Amazon Timestream."),
+        html.P("Fog-processed driving risk telemetry stored in Amazon DynamoDB."),
         dcc.Store(id="demo-session-store", storage_type="session"),
         html.Div(
             className="demo-panel",

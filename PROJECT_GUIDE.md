@@ -52,8 +52,8 @@ flowchart LR
     C --> D["IoT Rule"]
     D --> E["Amazon SQS\n缓冲与解耦"]
     E --> F["AWS Lambda\n校验与转换"]
-    F --> G["Amazon Timestream\n遥测与风险指标存储"]
-    G --> H["Dash 仪表盘\n部署在 AWS App Runner"]
+    F --> G["Amazon DynamoDB\n遥测与风险指标存储"]
+    G --> H["Dashboard Web UI\n通过 Lambda Function URL 对外提供"]
 ```
 
 ## 5. 技术选型
@@ -72,8 +72,8 @@ flowchart LR
 - IoT Rule：路由消息
 - Amazon SQS：消息缓冲与解耦
 - AWS Lambda：弹性处理
-- Amazon Timestream：时序数据存储
-- AWS App Runner：部署仪表盘 Web 应用
+- Amazon DynamoDB：时序数据存储
+- Lambda Function URL：对外提供仪表盘网页入口
 - CloudWatch Logs：日志和可观测性
 
 ## 6. 传感器模型设计
@@ -288,8 +288,8 @@ estimated_premium_per_trip = base_trip_price * premium_multiplier
 - IoT Core 负责安全接入 IoT 遥测数据
 - SQS 提供削峰填谷和解耦
 - Lambda 提供无服务器弹性扩展
-- Timestream 适合存储时序遥测数据
-- App Runner 能快速部署可扩展仪表盘
+- DynamoDB 适合存储时序遥测数据
+- Lambda Function URL 能快速部署可扩展仪表盘
 
 这套组合可以支撑你在报告里做出合理的架构分析与论证。
 
@@ -300,8 +300,8 @@ estimated_premium_per_trip = base_trip_price * premium_multiplier
 3. IoT Rule 将消息转发到 Amazon SQS
 4. Lambda 以批处理方式从 SQS 消费消息
 5. Lambda 对消息做校验和转换
-6. Lambda 将处理结果写入 Timestream
-7. 仪表盘从 Timestream 查询并展示风险和定价信息
+6. Lambda 将处理结果写入 DynamoDB
+7. 仪表盘从 DynamoDB 查询并展示风险和定价信息
 
 ## 10. 仪表盘范围建议
 
@@ -339,23 +339,23 @@ estimated_premium_per_trip = base_trip_price * premium_multiplier
 
 - 你的项目主栈已经是 Python
 - Dash 非常适合做课程项目级的数据仪表盘
-- 与 Timestream 和 boto3 集成简单
-- 容器化后可以直接部署到 App Runner
+- 与 DynamoDB 和 boto3 集成简单
+- 容器化后可以直接部署到 Lambda Function URL
 
 推荐前端查询链路如下：
 
 ```mermaid
 flowchart LR
-    A["浏览器"] --> B["Dash 应用\nAWS App Runner"]
-    B --> C["boto3 + App Runner IAM Role"]
-    C --> D["Amazon Timestream Query"]
-    D --> E["Timestream 数据库"]
+    A["浏览器"] --> B["Dash 应用\nLambda Function URL"]
+    B --> C["boto3 + Lambda Function URL IAM Role"]
+    C --> D["Amazon DynamoDB Query"]
+    D --> E["DynamoDB 数据库"]
 ```
 
 实现建议：
 
-- Dash 应用部署在 App Runner
-- 通过 App Runner 的实例角色直接读取 Timestream
+- Dash 应用部署在 Lambda Function URL
+- 通过 Lambda Function URL 的实例角色直接读取 DynamoDB
 - 使用 `dcc.Interval` 每 5 秒刷新一次
 - 刷新频率与 fog 的 5 秒聚合窗口对齐
 
@@ -378,7 +378,7 @@ flowchart LR
 - Lambda 创建 `demo_session_id`
 - Step Functions 每 5 秒触发一次 generator Lambda
 - generator Lambda 生成 demo 数据并发送到 SQS
-- 现有 ingest Lambda 继续把数据写入 Timestream
+- 现有 ingest Lambda 继续把数据写入 DynamoDB
 - Dashboard 仅在用户主动启动 demo 时按 `demo_session_id` 查询
 
 这个设计的关键是：
@@ -481,19 +481,19 @@ fog-car-insurance-real-time-pricing/
 ### 阶段 4：云端处理
 
 - 编写 Lambda 消费 SQS
-- 将数据写入 Timestream
+- 将数据写入 DynamoDB
 - 在 CloudWatch 中记录成功和失败日志
 
 阶段目标：
 
-**遥测数据成功存入 Timestream。**
+**遥测数据成功存入 DynamoDB。**
 
 ### 阶段 5：仪表盘
 
 - 编写 Dash 应用
-- 查询 Timestream
+- 查询 DynamoDB
 - 展示风险曲线和定价指标
-- 部署到 App Runner
+- 部署到 Lambda Function URL
 
 阶段目标：
 
@@ -575,8 +575,8 @@ fog-car-insurance-real-time-pricing/
 - fog 层先做聚合和特征提取，可以减少云端压力与网络传输量
 - SQS 可以将接入和处理解耦，提高系统弹性
 - Lambda 可以按负载自动扩展
-- Timestream 适合时序传感器数据
-- App Runner 让仪表盘部署简单，同时具备扩展能力
+- DynamoDB 适合时序传感器数据
+- Lambda Function URL 让仪表盘部署简单，同时具备扩展能力
 
 ## 15. 你至少要做的测试
 
@@ -617,8 +617,8 @@ GitHub Actions 中建议加入：
 - GitHub 托管代码
 - GitHub Actions 负责 CI/CD
 - AWS SAM 部署云端基础设施
-- ECR 托管 dashboard 镜像
-- App Runner 运行前端仪表盘
+- Lambda Function URL 暴露 dashboard 网页入口
+- Dashboard Lambda 提供页面和 API
 
 推荐的自动化流程如下：
 
@@ -631,11 +631,10 @@ flowchart TD
     E --> F["SAM 模板校验"]
     F --> G{"是否 main 分支或手动触发 deploy?"}
     G -->|否| H["仅返回 CI 结果"]
-    G -->|是| I["sam build + sam deploy\n部署后端基础设施"]
-    I --> J["读取 CloudFormation 输出\n拿到 ECR 仓库 URI"]
-    J --> K["构建并推送 dashboard 镜像到 ECR"]
-    K --> L["再次 sam deploy\n传入 DashboardImageIdentifier"]
-    L --> M["创建或更新 App Runner"]
+    G -->|是| I["sam build + sam deploy\n部署后端基础设施与 dashboard Lambda"]
+    I --> J["读取 CloudFormation 输出\n拿到 DashboardFunctionName"]
+    J --> K["AWS CLI 创建或更新\nLambda Function URL"]
+    K --> L["补充公网调用权限"]
 ```
 
 ### 推荐的 GitHub Actions 分工
@@ -649,19 +648,20 @@ flowchart TD
 - `deploy.yml`
   - 在 `main` 分支或 `workflow_dispatch` 时触发
   - 执行 `sam build`
-  - 第一次 `sam deploy` 部署 SQS、Lambda、Timestream、IoT Rule、ECR、IAM
-  - 推送 dashboard 镜像到 ECR
-  - 第二次 `sam deploy`，传入 `DashboardImageIdentifier`
+  - 执行 `sam deploy` 部署 SQS、Lambda、DynamoDB、IoT Rule、IAM
+  - 读取 `DashboardFunctionName`
+  - 创建或更新 `Lambda Function URL`
+  - 为公网访问补充 Lambda 权限
 
-### 为什么要做两次 SAM 部署
+### 为什么现在只需要一次 SAM 部署
 
-这是因为 App Runner 服务依赖于一个已经存在的 dashboard 镜像。
+因为 dashboard 不再通过容器托管服务运行，而是直接由 Lambda 返回网页和 API。
 
 因此流程应该是：
 
-1. 先用 SAM 创建 ECR 仓库和后端基础设施
-2. 再把 dashboard 镜像推上去
-3. 最后再用 SAM 创建或更新 App Runner 服务
+1. 先用 SAM 创建后端基础设施和 dashboard Lambda
+2. 再用 AWS CLI 为 dashboard Lambda 创建或更新 Function URL
+3. 最后补充公网调用权限
 
 ### 需要手工准备的部分
 
@@ -693,7 +693,7 @@ flowchart TD
 ### 第 3 周：3 月 23 日 - 3 月 29 日
 
 - 配置 AWS IoT Core
-- 配置 SQS、Lambda、Timestream
+- 配置 SQS、Lambda、DynamoDB
 - 验证云端数据接入
 
 ### 第 4 周：3 月 30 日 - 4 月 5 日
@@ -730,8 +730,8 @@ flowchart TD
 - 本地 **fog** 分析容器
 - edge 到 fog 使用 **ZeroMQ**
 - fog 到 AWS 使用 **MQTT + AWS IoT Core**
-- 云端链路使用 **IoT Rule -> SQS -> Lambda -> Timestream**
-- 使用 **Dash + App Runner** 做仪表盘
+- 云端链路使用 **IoT Rule -> SQS -> Lambda -> DynamoDB**
+- 使用 **Dash + Lambda Function URL** 做仪表盘
 - 使用简单可解释的 **基于风险的车险定价逻辑**
 
 这套方案足够符合本课程作业要求，而且可在规定时间内完成。

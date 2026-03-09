@@ -1,57 +1,65 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from functools import lru_cache
 from typing import Any
 
 import boto3
+from boto3.dynamodb.conditions import Attr, Key
 
 from cloud.demo_mode.session_store import deserialize_session
 
-DATABASE_NAME = os.getenv("DATABASE_NAME", "driver_pricing")
-TABLE_NAME = os.getenv("TABLE_NAME", "telemetry_windows")
+TELEMETRY_TABLE_NAME = os.getenv("TELEMETRY_TABLE_NAME", "telemetry_windows")
 DEMO_SESSIONS_TABLE = os.getenv("DEMO_SESSIONS_TABLE", "demo_sessions")
-INT_FIELDS = {"harsh_brake_count", "lane_departure_count"}
-FLOAT_FIELDS = {
-    "avg_speed_kmh",
-    "max_acceleration_ms2",
-    "steering_stddev",
-    "risk_score",
-    "premium_multiplier",
-}
 
 
-def _escape_literal(value: str) -> str:
-    return value.replace("'", "''")
+def _iso_now_minus_minutes(minutes: int) -> str:
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    return cutoff.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _parse_scalar_value(cell: dict[str, Any]) -> Any:
-    if "NullValue" in cell and cell["NullValue"]:
-        return None
-    if "ScalarValue" in cell:
-        return cell["ScalarValue"]
-    return None
+def _convert_dynamodb_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        integral = value.to_integral_value()
+        return int(value) if value == integral else float(value)
+    if isinstance(value, dict):
+        return {
+            key: _convert_dynamodb_value(nested_value)
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_convert_dynamodb_value(nested_value) for nested_value in value]
+    return value
 
 
-def _parse_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
-    columns = [column["Name"] for column in result["ColumnInfo"]]
-    rows: list[dict[str, Any]] = []
-    for row in result["Rows"]:
-        values = [_parse_scalar_value(cell) for cell in row["Data"]]
-        parsed_row = dict(zip(columns, values))
-        for field_name in INT_FIELDS:
-            if parsed_row.get(field_name) is not None:
-                parsed_row[field_name] = int(parsed_row[field_name])
-        for field_name in FLOAT_FIELDS:
-            if parsed_row.get(field_name) is not None:
-                parsed_row[field_name] = float(parsed_row[field_name])
-        rows.append(parsed_row)
-    return rows
+def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
+    normalized = _convert_dynamodb_value(item)
+    normalized["time"] = normalized["window_end"]
+    return normalized
 
 
-@lru_cache(maxsize=1)
-def get_query_client():
-    return boto3.client("timestream-query")
+def _query_partition(
+    partition_key: str,
+    *,
+    minutes: int | None = None,
+    descending: bool = False,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    query_kwargs: dict[str, Any] = {
+        "KeyConditionExpression": Key("pk").eq(partition_key),
+        "ScanIndexForward": not descending,
+    }
+    if minutes is not None:
+        query_kwargs["KeyConditionExpression"] = Key("pk").eq(partition_key) & Key(
+            "sk"
+        ).gte(_iso_now_minus_minutes(minutes))
+    if limit is not None:
+        query_kwargs["Limit"] = limit
+
+    response = get_telemetry_table().query(**query_kwargs)
+    return [_normalize_item(item) for item in response.get("Items", [])]
 
 
 @lru_cache(maxsize=1)
@@ -59,80 +67,51 @@ def get_dynamodb_resource():
     return boto3.resource("dynamodb")
 
 
+@lru_cache(maxsize=1)
+def get_telemetry_table():
+    return get_dynamodb_resource().Table(TELEMETRY_TABLE_NAME)
+
+
 def list_vehicles() -> list[str]:
-    query = (
-        f'SELECT DISTINCT vehicle_id FROM "{DATABASE_NAME}"."{TABLE_NAME}" '
-        "WHERE mode = 'production' "
-        "ORDER BY vehicle_id"
-    )
-    result = get_query_client().query(QueryString=query)
-    return [row["vehicle_id"] for row in _parse_rows(result)]
+    vehicles: set[str] = set()
+    scan_kwargs: dict[str, Any] = {
+        "ProjectionExpression": "vehicle_id, #mode",
+        "FilterExpression": Attr("mode").eq("production"),
+        "ExpressionAttributeNames": {"#mode": "mode"},
+    }
+    response = get_telemetry_table().scan(**scan_kwargs)
+    for item in response.get("Items", []):
+        vehicles.add(item["vehicle_id"])
+
+    while "LastEvaluatedKey" in response:
+        response = get_telemetry_table().scan(
+            **scan_kwargs,
+            ExclusiveStartKey=response["LastEvaluatedKey"],
+        )
+        for item in response.get("Items", []):
+            vehicles.add(item["vehicle_id"])
+
+    return sorted(vehicles)
 
 
 def latest_metrics(vehicle_id: str) -> dict[str, Any] | None:
-    query = f"""
-    SELECT time, vehicle_id, behavior_class, avg_speed_kmh, max_acceleration_ms2,
-           harsh_brake_count, steering_stddev, lane_departure_count,
-           risk_score, premium_multiplier
-    FROM "{DATABASE_NAME}"."{TABLE_NAME}"
-    WHERE measure_name = 'trip_window'
-      AND mode = 'production'
-      AND vehicle_id = '{_escape_literal(vehicle_id)}'
-    ORDER BY time DESC
-    LIMIT 1
-    """
-    result = get_query_client().query(QueryString=query)
-    rows = _parse_rows(result)
-    return rows[0] if rows else None
+    items = _query_partition(f"VEHICLE#{vehicle_id}", descending=True, limit=1)
+    return items[0] if items else None
 
 
 def recent_metrics(vehicle_id: str, minutes: int = 30) -> list[dict[str, Any]]:
-    query = f"""
-    SELECT time, avg_speed_kmh, risk_score, harsh_brake_count,
-           lane_departure_count, premium_multiplier
-    FROM "{DATABASE_NAME}"."{TABLE_NAME}"
-    WHERE measure_name = 'trip_window'
-      AND mode = 'production'
-      AND vehicle_id = '{_escape_literal(vehicle_id)}'
-      AND time > ago({minutes}m)
-    ORDER BY time ASC
-    """
-    result = get_query_client().query(QueryString=query)
-    return _parse_rows(result)
+    return _query_partition(f"VEHICLE#{vehicle_id}", minutes=minutes)
 
 
 def latest_demo_metrics(demo_session_id: str) -> dict[str, Any] | None:
-    query = f"""
-    SELECT time, vehicle_id, behavior_class, avg_speed_kmh, max_acceleration_ms2,
-           harsh_brake_count, steering_stddev, lane_departure_count,
-           risk_score, premium_multiplier
-    FROM "{DATABASE_NAME}"."{TABLE_NAME}"
-    WHERE measure_name = 'trip_window'
-      AND mode = 'demo'
-      AND demo_session_id = '{_escape_literal(demo_session_id)}'
-    ORDER BY time DESC
-    LIMIT 1
-    """
-    result = get_query_client().query(QueryString=query)
-    rows = _parse_rows(result)
-    return rows[0] if rows else None
+    items = _query_partition(f"DEMO#{demo_session_id}", descending=True, limit=1)
+    return items[0] if items else None
 
 
 def recent_demo_metrics(
     demo_session_id: str, minutes: int = 30
 ) -> list[dict[str, Any]]:
-    query = f"""
-    SELECT time, avg_speed_kmh, risk_score, harsh_brake_count,
-           lane_departure_count, premium_multiplier
-    FROM "{DATABASE_NAME}"."{TABLE_NAME}"
-    WHERE measure_name = 'trip_window'
-      AND mode = 'demo'
-      AND demo_session_id = '{_escape_literal(demo_session_id)}'
-      AND time > ago({minutes}m)
-    ORDER BY time ASC
-    """
-    result = get_query_client().query(QueryString=query)
-    return _parse_rows(result)
+    return _query_partition(f"DEMO#{demo_session_id}", minutes=minutes)
 
 
 def get_demo_session(demo_session_id: str) -> dict[str, Any] | None:

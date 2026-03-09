@@ -8,7 +8,7 @@ For a full Chinese architecture walkthrough, see `ARCHITECTURE_CN.md`.
 
 - `edge/`: interpolation-based sensor simulator
 - `fog/`: local fog node that aggregates sensor events and publishes enriched telemetry
-- `cloud/lambda_ingest/`: Lambda that consumes SQS and writes to Amazon Timestream
+- `cloud/lambda_ingest/`: Lambda that consumes SQS and writes to Amazon DynamoDB
 - `cloud/dashboard/`: Dash dashboard for visualising risk and premium metrics
 - `infra/template.yaml`: SAM/CloudFormation template for AWS deployment
 
@@ -54,15 +54,14 @@ ruff check .
    - `AWS_REGION`
 3. The deploy workflow will:
    - run `sam build`
-   - deploy SQS, Lambda, Timestream, IoT rule, ECR, and IAM roles
-   - build and push the dashboard image to ECR
-   - redeploy SAM with the dashboard image URI so App Runner is created
+   - deploy SQS, Lambda, DynamoDB, Step Functions, IoT rule, and IAM roles
+   - create or update the public dashboard Function URL
 
 ## AWS bootstrap notes
 
 - You still need a one-time AWS IoT Core thing, certificate, and policy for the fog node.
 - The IoT Topic Rule is created by `infra/template.yaml`.
-- The dashboard uses the App Runner instance role created by SAM to query Timestream.
+- The dashboard is served through a Lambda Function URL and reads DynamoDB through IAM permissions on the dashboard Lambda.
 
 ## Demo mode
 
@@ -71,12 +70,12 @@ The repository also includes an optional Lambda-based demo mode for the dashboar
 - `Start Demo` invokes a Lambda control function
 - Step Functions repeatedly triggers a demo generator Lambda
 - The generator sends demo telemetry to SQS
-- The existing ingest Lambda writes demo records into Timestream
+- The existing ingest Lambda writes demo records into DynamoDB
 - The dashboard switches to the demo session view only when a user explicitly starts a demo
 
 This means the coursework path is preserved:
 
-- local `edge -> fog -> AWS IoT Core -> SQS -> ingest Lambda -> Timestream`
+- local `edge -> fog -> AWS IoT Core -> SQS -> ingest Lambda -> DynamoDB`
 - demo mode is a separate cloud-only path
 - demo data is marked with `mode=demo` and `demo_session_id`
 - coursework data remains `mode=production`
