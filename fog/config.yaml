@@ -1,0 +1,13 @@
+window_seconds: 5
+harsh_brake_threshold: 0.6
+lane_departure_threshold: 0.4
+receive_timeout_ms: 1000
+spool_path: /tmp/fog-spool.jsonl
+zmq:
+  bind: tcp://0.0.0.0:5555
+risk_thresholds:
+  speed_kmh: 120
+  acceleration_ms2: 4
+  harsh_brake_count: 5
+  steering_stddev: 1.2
+  lane_departure_count: 3

@@ -1,0 +1,17 @@
+services:
+  fog:
+    build:
+      context: .
+      dockerfile: fog/Dockerfile
+    environment:
+      FOG_CONFIG_PATH: fog/config.yaml
+      MQTT_MODE: console
+
+  edge:
+    build:
+      context: .
+      dockerfile: edge/Dockerfile
+    environment:
+      EDGE_CONFIG_PATH: edge/config.yaml
+    depends_on:
+      - fog

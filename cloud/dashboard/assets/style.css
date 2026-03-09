@@ -1,0 +1,104 @@
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", sans-serif;
+  background: linear-gradient(180deg, #f7f2e7 0%, #fffdfa 100%);
+  color: #1c1917;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.controls {
+  margin: 20px 0 24px;
+}
+
+.demo-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e7e5e4;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(28, 25, 23, 0.08);
+}
+
+.demo-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.demo-actions button {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #1c1917;
+  color: #fffdfa;
+}
+
+.demo-actions button:hover {
+  background: #44403c;
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: #57534e;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f5f5f4;
+  border: 1px solid #d6d3d1;
+  font-weight: 600;
+}
+
+.status-id,
+.status-meta {
+  font-size: 0.92rem;
+}
+
+.status-error {
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.kpi-card {
+  background: white;
+  border: 1px solid #e7e5e4;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.08);
+}
+
+.kpi-label {
+  font-size: 0.85rem;
+  color: #78716c;
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+}

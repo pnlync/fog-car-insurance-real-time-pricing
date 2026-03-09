@@ -1,0 +1,347 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Fog and edge car insurance pricing backend on AWS
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fog-car-insurance
+  DatabaseName:
+    Type: String
+    Default: driver_pricing
+  TableName:
+    Type: String
+    Default: telemetry_windows
+  DashboardImageIdentifier:
+    Type: String
+    Default: ""
+    Description: Leave empty on the first deploy, then redeploy with the ECR image URI.
+  DemoSessionsTableName:
+    Type: String
+    Default: demo_sessions
+
+Conditions:
+  HasDashboardImage: !Not [!Equals [!Ref DashboardImageIdentifier, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        DATABASE_NAME: !Ref DatabaseName
+        TABLE_NAME: !Ref TableName
+
+Resources:
+  TelemetryQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${ProjectName}-telemetry"
+      VisibilityTimeout: 60
+
+  TimestreamDatabase:
+    Type: AWS::Timestream::Database
+    Properties:
+      DatabaseName: !Ref DatabaseName
+
+  TimestreamTable:
+    Type: AWS::Timestream::Table
+    Properties:
+      DatabaseName: !Ref DatabaseName
+      TableName: !Ref TableName
+      RetentionProperties:
+        MemoryStoreRetentionPeriodInHours: "24"
+        MagneticStoreRetentionPeriodInDays: "30"
+
+  DemoSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref DemoSessionsTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: demo_session_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: demo_session_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../cloud/lambda_ingest
+      Handler: app.handler
+      Events:
+        TelemetryQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TelemetryQueue.Arn
+            BatchSize: 10
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt TelemetryQueue.Arn
+            - Effect: Allow
+              Action:
+                - timestream:WriteRecords
+              Resource: !Sub arn:${AWS::Partition}:timestream:${AWS::Region}:${AWS::AccountId}:database/${DatabaseName}/table/${TableName}
+            - Effect: Allow
+              Action:
+                - timestream:DescribeEndpoints
+              Resource: "*"
+
+  GenerateDemoTickFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ..
+      Handler: cloud.demo_mode.generate_demo_tick.handler
+      Environment:
+        Variables:
+          DEMO_SESSIONS_TABLE: !Ref DemoSessionsTableName
+          TELEMETRY_QUEUE_URL: !Ref TelemetryQueue
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt DemoSessionsTable.Arn
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt TelemetryQueue.Arn
+
+  DemoStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${ProjectName}-demo-mode"
+      Definition:
+        StartAt: GenerateDemoTick
+        States:
+          GenerateDemoTick:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            OutputPath: $.Payload
+            Parameters:
+              FunctionName: !GetAtt GenerateDemoTickFunction.Arn
+              Payload:
+                demo_session_id.$: $.demo_session_id
+            Next: ContinueChoice
+          ContinueChoice:
+            Type: Choice
+            Choices:
+              - Variable: $.continue
+                BooleanEquals: true
+                Next: WaitForNextTick
+            Default: DemoComplete
+          WaitForNextTick:
+            Type: Wait
+            Seconds: 5
+            Next: GenerateDemoTick
+          DemoComplete:
+            Type: Succeed
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref GenerateDemoTickFunction
+
+  StartDemoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ..
+      Handler: cloud.demo_mode.start_demo.handler
+      Environment:
+        Variables:
+          DEMO_SESSIONS_TABLE: !Ref DemoSessionsTableName
+          DEMO_STATE_MACHINE_ARN: !Ref DemoStateMachine
+          DEMO_DURATION_MINUTES: "2"
+          DEMO_VEHICLE_COUNT: "1"
+          DEMO_WINDOW_SECONDS: "5"
+          DEMO_SEGMENT_STEPS: "3"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt DemoSessionsTable.Arn
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref DemoStateMachine
+
+  StopDemoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ..
+      Handler: cloud.demo_mode.stop_demo.handler
+      Environment:
+        Variables:
+          DEMO_SESSIONS_TABLE: !Ref DemoSessionsTableName
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt DemoSessionsTable.Arn
+            - Effect: Allow
+              Action:
+                - states:StopExecution
+              Resource: !Sub arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${ProjectName}-demo-mode:*
+
+  IoTRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: sqs-send-message
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt TelemetryQueue.Arn
+
+  TelemetryTopicRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub "${ProjectName}_telemetry_to_sqs"
+      TopicRulePayload:
+        AwsIotSqlVersion: "2016-03-23"
+        Sql: "SELECT * FROM 'insurance/+/+/telemetry'"
+        RuleDisabled: false
+        Actions:
+          - Sqs:
+              QueueUrl: !Ref TelemetryQueue
+              RoleArn: !GetAtt IoTRuleRole.Arn
+              UseBase64: false
+
+  DashboardRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-dashboard"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  AppRunnerEcrAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: timestream-query
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - timestream:DescribeEndpoints
+                  - timestream:Select
+                  - timestream:SelectValues
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                Resource: !GetAtt DemoSessionsTable.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt StartDemoFunction.Arn
+                  - !GetAtt StopDemoFunction.Arn
+
+  DashboardService:
+    Type: AWS::AppRunner::Service
+    Condition: HasDashboardImage
+    Properties:
+      ServiceName: !Sub "${ProjectName}-dashboard"
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerEcrAccessRole.Arn
+        AutoDeploymentsEnabled: true
+        ImageRepository:
+          ImageIdentifier: !Ref DashboardImageIdentifier
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: DATABASE_NAME
+                Value: !Ref DatabaseName
+              - Name: TABLE_NAME
+                Value: !Ref TableName
+              - Name: DEMO_SESSIONS_TABLE
+                Value: !Ref DemoSessionsTableName
+              - Name: START_DEMO_FUNCTION_NAME
+                Value: !Ref StartDemoFunction
+              - Name: STOP_DEMO_FUNCTION_NAME
+                Value: !Ref StopDemoFunction
+              - Name: AWS_REGION
+                Value: !Ref AWS::Region
+      InstanceConfiguration:
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        HealthyThreshold: 1
+        Interval: 10
+        Path: "/"
+        Protocol: HTTP
+        Timeout: 5
+        UnhealthyThreshold: 5
+
+Outputs:
+  TelemetryQueueUrl:
+    Value: !Ref TelemetryQueue
+  TelemetryQueueArn:
+    Value: !GetAtt TelemetryQueue.Arn
+  TimestreamDatabaseName:
+    Value: !Ref DatabaseName
+  TimestreamTableName:
+    Value: !Ref TableName
+  DemoSessionsTableName:
+    Value: !Ref DemoSessionsTableName
+  DashboardRepositoryUri:
+    Value: !GetAtt DashboardRepository.RepositoryUri
+  AppRunnerEcrAccessRoleArn:
+    Value: !GetAtt AppRunnerEcrAccessRole.Arn
+  AppRunnerInstanceRoleArn:
+    Value: !GetAtt AppRunnerInstanceRole.Arn
+  StartDemoFunctionName:
+    Value: !Ref StartDemoFunction
+  StopDemoFunctionName:
+    Value: !Ref StopDemoFunction
+  DashboardServiceUrl:
+    Condition: HasDashboardImage
+    Value: !GetAtt DashboardService.ServiceUrl

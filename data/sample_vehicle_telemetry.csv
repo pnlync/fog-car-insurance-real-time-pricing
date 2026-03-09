@@ -1,0 +1,13 @@
+behavior_label,speed,acceleration,brake_intensity,steering_variability,lane_deviation
+safe,48,0.6,0.08,0.18,0.05
+safe,55,0.8,0.10,0.22,0.08
+safe,62,0.9,0.12,0.25,0.10
+safe,58,0.7,0.07,0.20,0.06
+aggressive,82,2.6,0.42,0.95,0.22
+aggressive,95,3.1,0.58,1.10,0.28
+aggressive,88,2.9,0.49,1.05,0.25
+aggressive,102,3.6,0.72,1.25,0.31
+distracted,65,1.4,0.20,1.35,0.48
+distracted,71,1.8,0.24,1.42,0.55
+distracted,68,1.6,0.19,1.31,0.62
+distracted,74,1.9,0.26,1.48,0.58

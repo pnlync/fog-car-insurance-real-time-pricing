@@ -1,0 +1,40 @@
+dataset_path: data/sample_vehicle_telemetry.csv
+simulation_tick_hz: 10
+interpolation_window_seconds: 5
+dispatch_interval_seconds: 1
+behavior_switch_probability: 0.2
+vehicles:
+  count: 3
+zmq:
+  endpoint: tcp://fog:5555
+sensors:
+  speed:
+    freq_hz: 5
+    unit: km/h
+    noise_stddev: 1.5
+    min_value: 0
+    max_value: 180
+  acceleration:
+    freq_hz: 10
+    unit: m/s2
+    noise_stddev: 0.15
+    min_value: -6
+    max_value: 6
+  brake_intensity:
+    freq_hz: 5
+    unit: ratio
+    noise_stddev: 0.03
+    min_value: 0
+    max_value: 1
+  steering_variability:
+    freq_hz: 5
+    unit: ratio
+    noise_stddev: 0.05
+    min_value: 0
+    max_value: 3
+  lane_deviation:
+    freq_hz: 2
+    unit: m
+    noise_stddev: 0.04
+    min_value: 0
+    max_value: 3

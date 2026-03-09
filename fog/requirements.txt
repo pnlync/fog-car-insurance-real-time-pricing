@@ -1,0 +1,4 @@
+paho-mqtt>=2.1,<3
+pydantic>=2.7,<3
+PyYAML>=6.0,<7
+pyzmq>=26.0,<27

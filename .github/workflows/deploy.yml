@@ -1,0 +1,78 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+env:
+  STACK_NAME: fog-car-insurance-pricing
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT_NAME: fog-car-insurance
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: aws-actions/setup-sam@v2
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate SAM template
+        run: sam validate --template-file infra/template.yaml
+
+      - name: Initial SAM deploy
+        run: |
+          sam build --template-file infra/template.yaml
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name "$STACK_NAME" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides ProjectName="$PROJECT_NAME"
+
+      - name: Resolve ECR repository URI
+        id: stack
+        run: |
+          REPO_URI=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='DashboardRepositoryUri'].OutputValue | [0]" \
+            --output text)
+          echo "repo_uri=$REPO_URI" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push dashboard image
+        env:
+          REPO_URI: ${{ steps.stack.outputs.repo_uri }}
+        run: |
+          docker build -f cloud/dashboard/Dockerfile -t "$REPO_URI:latest" .
+          docker push "$REPO_URI:latest"
+
+      - name: Deploy App Runner service through SAM
+        env:
+          REPO_URI: ${{ steps.stack.outputs.repo_uri }}
+        run: |
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name "$STACK_NAME" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              ProjectName="$PROJECT_NAME" \
+              DashboardImageIdentifier="$REPO_URI:latest"
