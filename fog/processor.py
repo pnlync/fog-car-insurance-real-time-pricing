@@ -25,11 +25,14 @@ class ProcessorConfig:
     window_seconds: int
     harsh_brake_threshold: float
     lane_departure_threshold: float
+    emit_lag_seconds: float
     thresholds: RiskThresholds
 
     def __post_init__(self) -> None:
         if self.window_seconds <= 0:
             raise ValueError("window_seconds must be greater than 0.")
+        if self.emit_lag_seconds < 0:
+            raise ValueError("emit_lag_seconds cannot be negative.")
 
 
 @dataclass
@@ -76,16 +79,21 @@ class FogProcessor:
             window_end = bucket.window_start + timedelta(
                 seconds=self.config.window_seconds
             )
-            if window_end <= now:
-                ready.append(self._build_window(bucket, window_end))
+            emit_at = window_end + timedelta(seconds=self.config.emit_lag_seconds)
+            if emit_at <= now:
+                window = self._build_window(bucket, window_end)
+                if window is not None:
+                    ready.append(window)
                 del self.buckets[key]
 
         return ready
 
     def _build_window(
         self, bucket: WindowBucket, window_end: datetime
-    ) -> AggregatedWindow:
-        speeds = bucket.events_by_type.get("speed", [0.0])
+    ) -> AggregatedWindow | None:
+        speeds = bucket.events_by_type.get("speed", [])
+        if not speeds:
+            return None
         accelerations = [
             abs(value) for value in bucket.events_by_type.get("acceleration", [0.0])
         ]

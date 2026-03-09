@@ -311,17 +311,49 @@ def _html_page() -> str:
           y: 0.5
         }]
       };
-      Plotly.newPlot("speed-chart", [], layout, {displayModeBar: false, responsive: true});
-      Plotly.newPlot("risk-chart", [], layout, {displayModeBar: false, responsive: true});
-      Plotly.newPlot("events-chart", [], layout, {displayModeBar: false, responsive: true});
+      const config = {displayModeBar: false, responsive: true};
+      Plotly.newPlot("speed-chart", [], layout, config);
+      Plotly.newPlot("risk-chart", [], layout, config);
+      Plotly.newPlot("events-chart", [], layout, config);
     }
 
-    function renderCharts(history, label) {
+    function sanitizeHistory(history) {
       if (!history || history.length === 0) {
+        return [];
+      }
+      return history
+        .filter((item) => item.time && Number(item.avg_speed_kmh) > 0)
+        .sort((left, right) => new Date(left.time) - new Date(right.time));
+    }
+
+    function buildSeries(history, key, maxGapMs = 15000) {
+      const points = [];
+      history.forEach((item, index) => {
+        const currentTime = new Date(item.time);
+        if (index > 0) {
+          const previousTime = new Date(history[index - 1].time);
+          if ((currentTime - previousTime) > maxGapMs) {
+            points.push({ x: history[index - 1].time, y: null });
+          }
+        }
+        points.push({ x: item.time, y: item[key] });
+      });
+      return {
+        x: points.map((point) => point.x),
+        y: points.map((point) => point.y),
+      };
+    }
+
+    function renderCharts(rawHistory, label) {
+      const history = sanitizeHistory(rawHistory);
+      if (history.length === 0) {
         renderEmptyCharts();
         return;
       }
-      const times = history.map((item) => item.time);
+      const speedSeries = buildSeries(history, "avg_speed_kmh");
+      const riskSeries = buildSeries(history, "risk_score");
+      const brakeSeries = buildSeries(history, "harsh_brake_count");
+      const laneSeries = buildSeries(history, "lane_departure_count");
       const baseLayout = {
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
@@ -329,42 +361,56 @@ def _html_page() -> str:
         margin: { l: 44, r: 20, t: 18, b: 42 },
         xaxis: { gridcolor: "rgba(29,42,50,0.08)" },
         yaxis: { gridcolor: "rgba(29,42,50,0.08)" },
+        hovermode: "x unified",
       };
+      const config = {displayModeBar: false, responsive: true};
 
       Plotly.newPlot("speed-chart", [{
-        x: times,
-        y: history.map((item) => item.avg_speed_kmh),
+        x: speedSeries.x,
+        y: speedSeries.y,
         mode: "lines+markers",
-        line: { color: "#a0432d", width: 3 },
-        marker: { size: 6, color: "#a0432d" },
+        connectgaps: false,
+        line: { color: "#a0432d", width: 4, shape: "spline", smoothing: 0.55 },
+        marker: { size: 5, color: "#a0432d" },
         name: label
-      }], { ...baseLayout, yaxis: { title: "km/h", gridcolor: "rgba(29,42,50,0.08)" } }, {displayModeBar: false, responsive: true});
+      }], {
+        ...baseLayout,
+        yaxis: { title: "km/h", gridcolor: "rgba(29,42,50,0.08)" }
+      }, config);
 
       Plotly.newPlot("risk-chart", [{
-        x: times,
-        y: history.map((item) => item.risk_score),
+        x: riskSeries.x,
+        y: riskSeries.y,
         mode: "lines+markers",
-        line: { color: "#2d6a73", width: 3 },
-        marker: { size: 6, color: "#2d6a73" },
+        connectgaps: false,
+        line: { color: "#2d6a73", width: 4, shape: "spline", smoothing: 0.45 },
+        marker: { size: 5, color: "#2d6a73" },
         name: label
-      }], { ...baseLayout, yaxis: { title: "score", range: [0, 1], gridcolor: "rgba(29,42,50,0.08)" } }, {displayModeBar: false, responsive: true});
+      }], {
+        ...baseLayout,
+        yaxis: { title: "score", range: [0, 1], gridcolor: "rgba(29,42,50,0.08)" }
+      }, config);
 
       Plotly.newPlot("events-chart", [
         {
-          x: times,
-          y: history.map((item) => item.harsh_brake_count),
+          x: brakeSeries.x,
+          y: brakeSeries.y,
           type: "bar",
           name: "Harsh Brakes",
           marker: { color: "#a0432d" }
         },
         {
-          x: times,
-          y: history.map((item) => item.lane_departure_count),
+          x: laneSeries.x,
+          y: laneSeries.y,
           type: "bar",
           name: "Lane Departures",
           marker: { color: "#2d6a73" }
         }
-      ], { ...baseLayout, barmode: "group", yaxis: { title: "count", gridcolor: "rgba(29,42,50,0.08)" } }, {displayModeBar: false, responsive: true});
+      ], {
+        ...baseLayout,
+        barmode: "group",
+        yaxis: { title: "count", gridcolor: "rgba(29,42,50,0.08)" }
+      }, config);
     }
 
     async function loadVehicles() {

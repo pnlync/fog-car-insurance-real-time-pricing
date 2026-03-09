@@ -30,6 +30,7 @@ def build_processor(config: dict) -> FogProcessor:
         window_seconds=int(config["window_seconds"]),
         harsh_brake_threshold=float(config["harsh_brake_threshold"]),
         lane_departure_threshold=float(config["lane_departure_threshold"]),
+        emit_lag_seconds=float(config.get("emit_lag_seconds", 2.0)),
         thresholds=thresholds,
     )
     return FogProcessor(processor_config)

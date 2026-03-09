@@ -99,7 +99,7 @@ def latest_metrics(vehicle_id: str) -> dict[str, Any] | None:
     return items[0] if items else None
 
 
-def recent_metrics(vehicle_id: str, minutes: int = 30) -> list[dict[str, Any]]:
+def recent_metrics(vehicle_id: str, minutes: int = 10) -> list[dict[str, Any]]:
     return _query_partition(f"VEHICLE#{vehicle_id}", minutes=minutes)
 
 
@@ -109,7 +109,7 @@ def latest_demo_metrics(demo_session_id: str) -> dict[str, Any] | None:
 
 
 def recent_demo_metrics(
-    demo_session_id: str, minutes: int = 30
+    demo_session_id: str, minutes: int = 10
 ) -> list[dict[str, Any]]:
     return _query_partition(f"DEMO#{demo_session_id}", minutes=minutes)
 
