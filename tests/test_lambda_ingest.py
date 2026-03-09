@@ -11,7 +11,11 @@ def sample_payload(**overrides):
         "window_start": "2026-03-09T21:00:00Z",
         "window_end": "2026-03-09T21:00:05Z",
         "avg_speed_kmh": 65.5,
+        "avg_acceleration_ms2": 1.4,
         "max_acceleration_ms2": 2.1,
+        "avg_brake_intensity": 0.42,
+        "avg_steering_variability": 0.36,
+        "avg_lane_deviation_m": 0.18,
         "harsh_brake_count": 1,
         "steering_stddev": 0.22,
         "lane_departure_count": 0,
@@ -36,6 +40,7 @@ def test_build_item_uses_vehicle_partition_for_production():
     assert item["pk"] == "VEHICLE#veh-001"
     assert item["sk"] == "2026-03-09T21:00:05Z#trip-001"
     assert item["avg_speed_kmh"] == Decimal("65.5")
+    assert item["avg_brake_intensity"] == Decimal("0.42")
 
 
 def test_build_item_uses_demo_partition_for_demo_mode():

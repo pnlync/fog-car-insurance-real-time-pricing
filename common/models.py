@@ -35,7 +35,11 @@ class AggregatedWindow(BaseModel):
     mode: TelemetryMode = "production"
     demo_session_id: Optional[str] = None
     avg_speed_kmh: float
+    avg_acceleration_ms2: float
     max_acceleration_ms2: float
+    avg_brake_intensity: float = Field(ge=0.0)
+    avg_steering_variability: float = Field(ge=0.0)
+    avg_lane_deviation_m: float = Field(ge=0.0)
     harsh_brake_count: int
     steering_stddev: float
     lane_departure_count: int

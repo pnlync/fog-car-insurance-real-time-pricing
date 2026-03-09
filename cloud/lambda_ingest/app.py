@@ -17,7 +17,11 @@ REQUIRED_FIELDS = {
     "window_start",
     "window_end",
     "avg_speed_kmh",
+    "avg_acceleration_ms2",
     "max_acceleration_ms2",
+    "avg_brake_intensity",
+    "avg_steering_variability",
+    "avg_lane_deviation_m",
     "harsh_brake_count",
     "steering_stddev",
     "lane_departure_count",
@@ -28,7 +32,11 @@ REQUIRED_FIELDS = {
 INTEGER_FIELDS = {"harsh_brake_count", "lane_departure_count"}
 FLOAT_FIELDS = {
     "avg_speed_kmh",
+    "avg_acceleration_ms2",
     "max_acceleration_ms2",
+    "avg_brake_intensity",
+    "avg_steering_variability",
+    "avg_lane_deviation_m",
     "steering_stddev",
     "risk_score",
     "premium_multiplier",

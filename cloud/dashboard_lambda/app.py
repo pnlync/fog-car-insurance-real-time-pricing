@@ -27,10 +27,11 @@ def _html_page() -> str:
   <style>
     :root {
       --bg: #f4f0e8;
-      --surface: rgba(255, 252, 247, 0.92);
+      --surface: rgba(255, 252, 247, 0.94);
       --ink: #1d2a32;
       --accent: #a0432d;
       --accent-2: #2d6a73;
+      --accent-3: #5a7f2b;
       --muted: #5f6b73;
       --line: rgba(29, 42, 50, 0.1);
       --shadow: 0 20px 50px rgba(29, 42, 50, 0.12);
@@ -46,7 +47,7 @@ def _html_page() -> str:
         linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
     }
     .page {
-      width: min(1180px, calc(100vw - 32px));
+      width: min(1280px, calc(100vw - 32px));
       margin: 24px auto 56px;
     }
     .hero, .panel, .chart-card {
@@ -76,7 +77,7 @@ def _html_page() -> str:
     .subtitle {
       margin: 0;
       color: var(--muted);
-      max-width: 760px;
+      max-width: 860px;
       font-size: 16px;
     }
     .layout {
@@ -84,9 +85,7 @@ def _html_page() -> str:
       display: grid;
       gap: 18px;
     }
-    .panel {
-      padding: 20px;
-    }
+    .panel { padding: 20px; }
     .controls {
       display: grid;
       gap: 14px;
@@ -119,9 +118,7 @@ def _html_page() -> str:
       font-weight: 700;
       transition: transform 120ms ease, opacity 120ms ease;
     }
-    button.secondary {
-      background: var(--accent-2);
-    }
+    button.secondary { background: var(--accent-2); }
     button:hover { transform: translateY(-1px); }
     button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .status-row {
@@ -161,35 +158,41 @@ def _html_page() -> str:
       margin-bottom: 10px;
     }
     .kpi-value {
-      font-size: clamp(24px, 3vw, 36px);
+      font-size: clamp(22px, 2.8vw, 32px);
       font-weight: 800;
       letter-spacing: -0.04em;
     }
     .charts {
       display: grid;
       gap: 18px;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .chart-card { padding: 14px; }
+    .chart-card {
+      padding: 14px;
+      min-height: 320px;
+    }
+    .chart-card-wide { grid-column: 1 / -1; }
     .chart-title {
-      margin: 4px 8px 10px;
+      margin: 4px 8px 4px;
       font-size: 15px;
       font-weight: 700;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
-    .empty {
-      padding: 32px;
-      text-align: center;
+    .chart-note {
+      margin: 0 8px 10px;
       color: var(--muted);
+      font-size: 13px;
     }
-    @media (max-width: 900px) {
+    @media (max-width: 980px) {
       .controls { grid-template-columns: 1fr; }
       .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .charts { grid-template-columns: 1fr; }
+      .chart-card-wide { grid-column: auto; }
     }
     @media (max-width: 560px) {
-      .page { width: min(100vw - 20px, 1180px); margin-top: 10px; }
+      .page { width: min(100vw - 20px, 1280px); margin-top: 10px; }
       .hero { padding: 22px; border-radius: 20px; }
       .panel, .chart-card { border-radius: 18px; }
       .kpis { grid-template-columns: 1fr; }
@@ -202,7 +205,7 @@ def _html_page() -> str:
       <div class="eyebrow">Fog and Edge Computing</div>
       <h1>Real-Time Car Insurance Pricing</h1>
       <p class="subtitle">
-        Local edge and fog nodes generate and aggregate driver telemetry. AWS stores the processed windows and serves this live dashboard.
+        This dashboard exposes the five simulated sensor types required by the coursework: speed, acceleration, brake intensity, steering variability, and lane deviation. The fog node aggregates raw events into five-second windows and AWS serves the latest sensor and risk metrics.
       </p>
     </section>
 
@@ -230,21 +233,53 @@ def _html_page() -> str:
 
     <section class="charts">
       <div class="chart-card">
-        <div class="chart-title">Average Speed</div>
+        <div class="chart-title">Speed Sensor</div>
+        <div class="chart-note">Fog window average speed from the speed sensor.</div>
         <div id="speed-chart"></div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Risk Score</div>
-        <div id="risk-chart"></div>
+        <div class="chart-title">Acceleration Sensor</div>
+        <div class="chart-note">Average and peak acceleration retained after fog aggregation.</div>
+        <div id="acceleration-chart"></div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Brake and Lane Events</div>
+        <div class="chart-title">Brake Intensity Sensor</div>
+        <div class="chart-note">Normalized brake intensity derived from the dataset brake signal.</div>
+        <div id="brake-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Steering Variability Sensor</div>
+        <div class="chart-note">Average steering movement and the fog window standard deviation.</div>
+        <div id="steering-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Lane Deviation Sensor</div>
+        <div class="chart-note">Average lane offset retained in each fog window.</div>
+        <div id="lane-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Risk and Premium</div>
+        <div class="chart-note">Fog risk score and pricing multiplier generated from the five sensor streams.</div>
+        <div id="risk-chart"></div>
+      </div>
+      <div class="chart-card chart-card-wide">
+        <div class="chart-title">Event Counts</div>
+        <div class="chart-note">Discrete events derived by the fog node from brake and lane signals.</div>
         <div id="events-chart"></div>
       </div>
     </section>
   </div>
 
   <script>
+    const CHART_IDS = [
+      "speed-chart",
+      "acceleration-chart",
+      "brake-chart",
+      "steering-chart",
+      "lane-chart",
+      "risk-chart",
+      "events-chart"
+    ];
     const state = {
       vehicleId: null,
       demoSessionId: null,
@@ -281,10 +316,14 @@ def _html_page() -> str:
         return;
       }
       const entries = [
+        ["Avg Speed (km/h)", formatNumber(latest.avg_speed_kmh, 1)],
+        ["Avg Accel (m/s2)", formatNumber(latest.avg_acceleration_ms2, 2)],
+        ["Brake Intensity", formatNumber(latest.avg_brake_intensity, 2)],
+        ["Steering Variability", formatNumber(latest.avg_steering_variability, 2)],
+        ["Lane Deviation (m)", formatNumber(latest.avg_lane_deviation_m, 2)],
         ["Risk Score", formatNumber(latest.risk_score, 4)],
         ["Premium Multiplier", formatNumber(latest.premium_multiplier, 4)],
-        ["Avg Speed (km/h)", formatNumber(latest.avg_speed_kmh, 1)],
-        ["Harsh Brakes", formatNumber(latest.harsh_brake_count, 0)],
+        ["Behavior Class", latest.behavior_class || "--"],
       ];
       kpis.innerHTML = entries.map(([label, value]) => `
         <div class="kpi">
@@ -294,8 +333,8 @@ def _html_page() -> str:
       `).join("");
     }
 
-    function renderEmptyCharts() {
-      const layout = {
+    function emptyLayout() {
+      return {
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
         font: { family: "IBM Plex Sans, sans-serif", color: "#5f6b73" },
@@ -311,10 +350,12 @@ def _html_page() -> str:
           y: 0.5
         }]
       };
-      const config = {displayModeBar: false, responsive: true};
-      Plotly.newPlot("speed-chart", [], layout, config);
-      Plotly.newPlot("risk-chart", [], layout, config);
-      Plotly.newPlot("events-chart", [], layout, config);
+    }
+
+    function renderEmptyCharts() {
+      const layout = emptyLayout();
+      const config = { displayModeBar: false, responsive: true };
+      CHART_IDS.forEach((chartId) => Plotly.newPlot(chartId, [], layout, config));
     }
 
     function sanitizeHistory(history) {
@@ -336,12 +377,35 @@ def _html_page() -> str:
             points.push({ x: history[index - 1].time, y: null });
           }
         }
-        points.push({ x: item.time, y: item[key] });
+        points.push({
+          x: item.time,
+          y: item[key] === undefined ? null : item[key],
+        });
       });
       return {
         x: points.map((point) => point.x),
         y: points.map((point) => point.y),
       };
+    }
+
+    function baseLayout() {
+      return {
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        font: { family: "IBM Plex Sans, sans-serif", color: "#1d2a32" },
+        margin: { l: 46, r: 22, t: 18, b: 42 },
+        xaxis: { gridcolor: "rgba(29,42,50,0.08)" },
+        yaxis: { gridcolor: "rgba(29,42,50,0.08)" },
+        hovermode: "x unified",
+        legend: { orientation: "h", y: 1.12, x: 0 },
+      };
+    }
+
+    function renderLineChart(chartId, traces, yaxisTitle) {
+      Plotly.newPlot(chartId, traces, {
+        ...baseLayout(),
+        yaxis: { title: yaxisTitle, gridcolor: "rgba(29,42,50,0.08)" },
+      }, { displayModeBar: false, responsive: true });
     }
 
     function renderCharts(rawHistory, label) {
@@ -350,67 +414,140 @@ def _html_page() -> str:
         renderEmptyCharts();
         return;
       }
-      const speedSeries = buildSeries(history, "avg_speed_kmh");
-      const riskSeries = buildSeries(history, "risk_score");
-      const brakeSeries = buildSeries(history, "harsh_brake_count");
-      const laneSeries = buildSeries(history, "lane_departure_count");
-      const baseLayout = {
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(0,0,0,0)",
-        font: { family: "IBM Plex Sans, sans-serif", color: "#1d2a32" },
-        margin: { l: 44, r: 20, t: 18, b: 42 },
-        xaxis: { gridcolor: "rgba(29,42,50,0.08)" },
-        yaxis: { gridcolor: "rgba(29,42,50,0.08)" },
-        hovermode: "x unified",
-      };
-      const config = {displayModeBar: false, responsive: true};
 
-      Plotly.newPlot("speed-chart", [{
+      const speedSeries = buildSeries(history, "avg_speed_kmh");
+      const avgAccelerationSeries = buildSeries(history, "avg_acceleration_ms2");
+      const maxAccelerationSeries = buildSeries(history, "max_acceleration_ms2");
+      const brakeSeries = buildSeries(history, "avg_brake_intensity");
+      const steeringSeries = buildSeries(history, "avg_steering_variability");
+      const steeringStddevSeries = buildSeries(history, "steering_stddev");
+      const laneSeries = buildSeries(history, "avg_lane_deviation_m");
+      const riskSeries = buildSeries(history, "risk_score");
+      const premiumSeries = buildSeries(history, "premium_multiplier");
+      const harshBrakeSeries = buildSeries(history, "harsh_brake_count");
+      const laneDepartureSeries = buildSeries(history, "lane_departure_count");
+
+      renderLineChart("speed-chart", [{
         x: speedSeries.x,
         y: speedSeries.y,
         mode: "lines+markers",
         connectgaps: false,
         line: { color: "#a0432d", width: 4, shape: "spline", smoothing: 0.55 },
         marker: { size: 5, color: "#a0432d" },
-        name: label
-      }], {
-        ...baseLayout,
-        yaxis: { title: "km/h", gridcolor: "rgba(29,42,50,0.08)" }
-      }, config);
+        name: `${label} speed`
+      }], "km/h");
 
-      Plotly.newPlot("risk-chart", [{
-        x: riskSeries.x,
-        y: riskSeries.y,
+      renderLineChart("acceleration-chart", [
+        {
+          x: avgAccelerationSeries.x,
+          y: avgAccelerationSeries.y,
+          mode: "lines+markers",
+          connectgaps: false,
+          line: { color: "#2d6a73", width: 4, shape: "spline", smoothing: 0.45 },
+          marker: { size: 5, color: "#2d6a73" },
+          name: "Average acceleration"
+        },
+        {
+          x: maxAccelerationSeries.x,
+          y: maxAccelerationSeries.y,
+          mode: "lines",
+          connectgaps: false,
+          line: { color: "#5a7f2b", width: 3, dash: "dot" },
+          name: "Peak acceleration"
+        }
+      ], "m/s2");
+
+      renderLineChart("brake-chart", [{
+        x: brakeSeries.x,
+        y: brakeSeries.y,
         mode: "lines+markers",
         connectgaps: false,
-        line: { color: "#2d6a73", width: 4, shape: "spline", smoothing: 0.45 },
-        marker: { size: 5, color: "#2d6a73" },
-        name: label
-      }], {
-        ...baseLayout,
-        yaxis: { title: "score", range: [0, 1], gridcolor: "rgba(29,42,50,0.08)" }
-      }, config);
+        line: { color: "#8f3d1f", width: 4, shape: "spline", smoothing: 0.4 },
+        marker: { size: 5, color: "#8f3d1f" },
+        name: "Brake intensity"
+      }], "ratio");
+
+      renderLineChart("steering-chart", [
+        {
+          x: steeringSeries.x,
+          y: steeringSeries.y,
+          mode: "lines+markers",
+          connectgaps: false,
+          line: { color: "#41644a", width: 4, shape: "spline", smoothing: 0.4 },
+          marker: { size: 5, color: "#41644a" },
+          name: "Average steering"
+        },
+        {
+          x: steeringStddevSeries.x,
+          y: steeringStddevSeries.y,
+          mode: "lines",
+          connectgaps: false,
+          line: { color: "#2d6a73", width: 3, dash: "dot" },
+          name: "Steering stddev"
+        }
+      ], "ratio");
+
+      renderLineChart("lane-chart", [{
+        x: laneSeries.x,
+        y: laneSeries.y,
+        mode: "lines+markers",
+        connectgaps: false,
+        line: { color: "#6f7f1e", width: 4, shape: "spline", smoothing: 0.4 },
+        marker: { size: 5, color: "#6f7f1e" },
+        name: "Lane deviation"
+      }], "m");
+
+      Plotly.newPlot("risk-chart", [
+        {
+          x: riskSeries.x,
+          y: riskSeries.y,
+          mode: "lines+markers",
+          connectgaps: false,
+          line: { color: "#2d6a73", width: 4, shape: "spline", smoothing: 0.45 },
+          marker: { size: 5, color: "#2d6a73" },
+          name: "Risk score",
+          yaxis: "y1"
+        },
+        {
+          x: premiumSeries.x,
+          y: premiumSeries.y,
+          mode: "lines",
+          connectgaps: false,
+          line: { color: "#a0432d", width: 3, dash: "dot" },
+          name: "Premium multiplier",
+          yaxis: "y2"
+        }
+      ], {
+        ...baseLayout(),
+        yaxis: { title: "risk score", range: [0, 1], gridcolor: "rgba(29,42,50,0.08)" },
+        yaxis2: {
+          title: "premium",
+          overlaying: "y",
+          side: "right",
+          gridcolor: "rgba(0,0,0,0)"
+        }
+      }, { displayModeBar: false, responsive: true });
 
       Plotly.newPlot("events-chart", [
         {
-          x: brakeSeries.x,
-          y: brakeSeries.y,
+          x: harshBrakeSeries.x,
+          y: harshBrakeSeries.y,
           type: "bar",
-          name: "Harsh Brakes",
+          name: "Harsh brakes",
           marker: { color: "#a0432d" }
         },
         {
-          x: laneSeries.x,
-          y: laneSeries.y,
+          x: laneDepartureSeries.x,
+          y: laneDepartureSeries.y,
           type: "bar",
-          name: "Lane Departures",
+          name: "Lane departures",
           marker: { color: "#2d6a73" }
         }
       ], {
-        ...baseLayout,
+        ...baseLayout(),
         barmode: "group",
         yaxis: { title: "count", gridcolor: "rgba(29,42,50,0.08)" }
-      }, config);
+      }, { displayModeBar: false, responsive: true });
     }
 
     async function loadVehicles() {

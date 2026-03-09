@@ -175,6 +175,42 @@ def advance_vehicle_state(
     }
     values["harsh_brake_count"] = int(round(values["harsh_brake_count"]))
     values["lane_departure_count"] = int(round(values["lane_departure_count"]))
+    avg_acceleration_ms2 = round(
+        _clamp(
+            (values["max_acceleration_ms2"] * 0.62) + rng.gauss(0.0, 0.08),
+            0.0,
+            values["max_acceleration_ms2"],
+        ),
+        4,
+    )
+    avg_brake_intensity = round(
+        _clamp(
+            0.14
+            + (0.17 * values["harsh_brake_count"])
+            + rng.gauss(0.0, 0.03),
+            0.0,
+            1.0,
+        ),
+        4,
+    )
+    avg_steering_variability = round(
+        _clamp(
+            (values["steering_stddev"] * 1.15) + rng.gauss(0.0, 0.05),
+            0.0,
+            3.0,
+        ),
+        4,
+    )
+    avg_lane_deviation_m = round(
+        _clamp(
+            0.12
+            + (0.38 * values["lane_departure_count"])
+            + rng.gauss(0.0, 0.06),
+            0.0,
+            3.0,
+        ),
+        4,
+    )
 
     risk_score = compute_risk_score(
         RiskInputs(
@@ -199,7 +235,11 @@ def advance_vehicle_state(
         "mode": "demo",
         "demo_session_id": demo_session_id,
         "avg_speed_kmh": values["avg_speed_kmh"],
+        "avg_acceleration_ms2": avg_acceleration_ms2,
         "max_acceleration_ms2": values["max_acceleration_ms2"],
+        "avg_brake_intensity": avg_brake_intensity,
+        "avg_steering_variability": avg_steering_variability,
+        "avg_lane_deviation_m": avg_lane_deviation_m,
         "harsh_brake_count": values["harsh_brake_count"],
         "steering_stddev": values["steering_stddev"],
         "lane_departure_count": values["lane_departure_count"],

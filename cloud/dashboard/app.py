@@ -29,10 +29,14 @@ def build_kpi_cards(latest: dict | None) -> list:
         return [html.Div("No telemetry available yet.", className="kpi-card")]
 
     cards = [
+        ("Avg Speed", latest["avg_speed_kmh"]),
+        ("Avg Acceleration", latest["avg_acceleration_ms2"]),
+        ("Brake Intensity", latest["avg_brake_intensity"]),
+        ("Steering Variability", latest["avg_steering_variability"]),
+        ("Lane Deviation", latest["avg_lane_deviation_m"]),
         ("Risk Score", latest["risk_score"]),
         ("Premium Multiplier", latest["premium_multiplier"]),
-        ("Avg Speed", latest["avg_speed_kmh"]),
-        ("Harsh Brakes", latest["harsh_brake_count"]),
+        ("Behavior Class", latest["behavior_class"]),
     ]
     return [
         html.Div(
@@ -78,7 +82,10 @@ app.layout = html.Div(
     className="page",
     children=[
         html.H1("Real-Time Car Insurance Pricing Dashboard"),
-        html.P("Fog-processed driving risk telemetry stored in Amazon DynamoDB."),
+        html.P(
+            "Fog-processed telemetry dashboard for speed, acceleration, brake, "
+            "steering, lane, and pricing metrics."
+        ),
         dcc.Store(id="demo-session-store", storage_type="session"),
         html.Div(
             className="demo-panel",
@@ -102,6 +109,10 @@ app.layout = html.Div(
         ),
         html.Div(id="kpi-cards", className="kpi-grid"),
         dcc.Graph(id="speed-chart"),
+        dcc.Graph(id="acceleration-chart"),
+        dcc.Graph(id="brake-chart"),
+        dcc.Graph(id="steering-chart"),
+        dcc.Graph(id="lane-chart"),
         dcc.Graph(id="risk-chart"),
         dcc.Graph(id="events-chart"),
     ],
@@ -165,6 +176,10 @@ def refresh_vehicle_options(_tick: int, current_value: str | None):
 @app.callback(
     Output("kpi-cards", "children"),
     Output("speed-chart", "figure"),
+    Output("acceleration-chart", "figure"),
+    Output("brake-chart", "figure"),
+    Output("steering-chart", "figure"),
+    Output("lane-chart", "figure"),
     Output("risk-chart", "figure"),
     Output("events-chart", "figure"),
     Input("refresh", "n_intervals"),
@@ -187,6 +202,10 @@ def refresh_dashboard(
         return (
             build_kpi_cards(None),
             placeholder_figure("Speed over time"),
+            placeholder_figure("Acceleration over time"),
+            placeholder_figure("Brake intensity over time"),
+            placeholder_figure("Steering variability over time"),
+            placeholder_figure("Lane deviation over time"),
             placeholder_figure("Risk score over time"),
             placeholder_figure("Event counts"),
         )
@@ -195,21 +214,49 @@ def refresh_dashboard(
         return (
             build_kpi_cards(latest),
             placeholder_figure("Speed over time"),
+            placeholder_figure("Acceleration over time"),
+            placeholder_figure("Brake intensity over time"),
+            placeholder_figure("Steering variability over time"),
+            placeholder_figure("Lane deviation over time"),
             placeholder_figure("Risk score over time"),
             placeholder_figure("Event counts"),
         )
 
+    acceleration_fig = px.line(
+        history,
+        x="time",
+        y=["avg_acceleration_ms2", "max_acceleration_ms2"],
+        title=f"Acceleration Sensor ({label})",
+    )
+    brake_fig = px.line(
+        history,
+        x="time",
+        y="avg_brake_intensity",
+        title=f"Brake Intensity Sensor ({label})",
+    )
+    steering_fig = px.line(
+        history,
+        x="time",
+        y=["avg_steering_variability", "steering_stddev"],
+        title=f"Steering Sensor ({label})",
+    )
+    lane_fig = px.line(
+        history,
+        x="time",
+        y="avg_lane_deviation_m",
+        title=f"Lane Deviation Sensor ({label})",
+    )
     speed_fig = px.line(
         history,
         x="time",
         y="avg_speed_kmh",
-        title=f"Average Speed Over Time ({label})",
+        title=f"Speed Sensor ({label})",
     )
     risk_fig = px.line(
         history,
         x="time",
-        y="risk_score",
-        title=f"Risk Score Over Time ({label})",
+        y=["risk_score", "premium_multiplier"],
+        title=f"Risk and Premium ({label})",
     )
     events_df = history.melt(
         id_vars=["time"],
@@ -225,7 +272,16 @@ def refresh_dashboard(
         barmode="group",
         title=f"Brake and Lane Events ({label})",
     )
-    return build_kpi_cards(latest), speed_fig, risk_fig, events_fig
+    return (
+        build_kpi_cards(latest),
+        speed_fig,
+        acceleration_fig,
+        brake_fig,
+        steering_fig,
+        lane_fig,
+        risk_fig,
+        events_fig,
+    )
 
 
 if __name__ == "__main__":

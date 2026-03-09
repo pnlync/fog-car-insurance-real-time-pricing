@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from common.models import AggregatedWindow
 
 
@@ -26,7 +28,10 @@ class LocalSpool:
         remaining: list[str] = []
         replayed = 0
         for line in pending_lines:
-            payload = AggregatedWindow.model_validate_json(line)
+            try:
+                payload = AggregatedWindow.model_validate_json(line)
+            except ValidationError:
+                continue
             if publish_fn(payload):
                 replayed += 1
             else:

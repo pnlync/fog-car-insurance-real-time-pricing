@@ -36,6 +36,16 @@ def _convert_dynamodb_value(value: Any) -> Any:
 
 def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
     normalized = _convert_dynamodb_value(item)
+    normalized.setdefault(
+        "avg_acceleration_ms2",
+        normalized.get("max_acceleration_ms2"),
+    )
+    normalized.setdefault("avg_brake_intensity", None)
+    normalized.setdefault(
+        "avg_steering_variability",
+        normalized.get("steering_stddev"),
+    )
+    normalized.setdefault("avg_lane_deviation_m", None)
     normalized["time"] = normalized["window_end"]
     return normalized
 

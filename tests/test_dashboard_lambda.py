@@ -15,6 +15,7 @@ def test_dashboard_route_returns_html():
     assert response["statusCode"] == 200
     assert "text/html" in response["headers"]["Content-Type"]
     assert "Real-Time Car Insurance Pricing" in response["body"]
+    assert "Speed Sensor" in response["body"]
 
 
 def test_vehicles_route_returns_json(monkeypatch):

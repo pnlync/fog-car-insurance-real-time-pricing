@@ -20,6 +20,17 @@ def floor_window(timestamp: datetime, window_seconds: int) -> datetime:
     return datetime.fromtimestamp(floored, tz=timezone.utc)
 
 
+def count_threshold_episodes(values: list[float], threshold: float) -> int:
+    episodes = 0
+    active = False
+    for value in values:
+        current = value >= threshold
+        if current and not active:
+            episodes += 1
+        active = current
+    return episodes
+
+
 @dataclass(frozen=True)
 class ProcessorConfig:
     window_seconds: int
@@ -95,20 +106,24 @@ class FogProcessor:
         if not speeds:
             return None
         accelerations = [
-            abs(value) for value in bucket.events_by_type.get("acceleration", [0.0])
+            abs(value) for value in bucket.events_by_type.get("acceleration", [])
         ]
         brakes = bucket.events_by_type.get("brake_intensity", [])
-        steering = bucket.events_by_type.get("steering_variability", [0.0])
+        steering = bucket.events_by_type.get("steering_variability", [])
         lane = bucket.events_by_type.get("lane_deviation", [])
 
         avg_speed = mean(speeds)
+        avg_acceleration = mean(accelerations) if accelerations else 0.0
         max_acceleration = max(accelerations, default=0.0)
-        harsh_brake_count = sum(
-            1 for value in brakes if value >= self.config.harsh_brake_threshold
+        avg_brake_intensity = mean(brakes) if brakes else 0.0
+        harsh_brake_count = count_threshold_episodes(
+            brakes, self.config.harsh_brake_threshold
         )
+        avg_steering_variability = mean(steering) if steering else 0.0
         steering_stddev = pstdev(steering) if len(steering) > 1 else 0.0
-        lane_departure_count = sum(
-            1 for value in lane if value >= self.config.lane_departure_threshold
+        avg_lane_deviation = mean(lane) if lane else 0.0
+        lane_departure_count = count_threshold_episodes(
+            lane, self.config.lane_departure_threshold
         )
         risk_inputs = RiskInputs(
             avg_speed_kmh=avg_speed,
@@ -130,7 +145,11 @@ class FogProcessor:
             window_start=bucket.window_start,
             window_end=window_end,
             avg_speed_kmh=round(avg_speed, 4),
+            avg_acceleration_ms2=round(avg_acceleration, 4),
             max_acceleration_ms2=round(max_acceleration, 4),
+            avg_brake_intensity=round(avg_brake_intensity, 4),
+            avg_steering_variability=round(avg_steering_variability, 4),
+            avg_lane_deviation_m=round(avg_lane_deviation, 4),
             harsh_brake_count=harsh_brake_count,
             steering_stddev=round(steering_stddev, 4),
             lane_departure_count=lane_departure_count,

@@ -16,4 +16,6 @@ def test_demo_simulator_generates_demo_payload():
     assert payload["mode"] == "demo"
     assert payload["demo_session_id"] == "demo-session-1234"
     assert payload["vehicle_id"].startswith("demo-veh-")
+    assert "avg_brake_intensity" in payload
+    assert "avg_lane_deviation_m" in payload
     assert next_state["vehicle_id"] == state["vehicle_id"]
