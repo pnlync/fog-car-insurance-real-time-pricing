@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+env:
+  AWS_REGION: us-east-1
+  AWS_DEFAULT_REGION: us-east-1
+
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
@@ -30,10 +34,10 @@ jobs:
         run: pytest
 
       - name: Validate SAM template
-        run: sam validate --template-file infra/template.yaml
+        run: sam validate --template-file infra/template.yaml --region "$AWS_REGION"
 
       - name: Build SAM application
-        run: sam build --template-file infra/template.yaml
+        run: sam build --template-file infra/template.yaml --region "$AWS_REGION"
 
       - name: Build edge image
         run: docker build -f edge/Dockerfile -t fog-edge:ci .

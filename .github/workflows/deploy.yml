@@ -9,6 +9,7 @@ on:
 env:
   STACK_NAME: fog-car-insurance-pricing
   AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
   PROJECT_NAME: fog-car-insurance
 
 jobs:
@@ -30,14 +31,15 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Validate SAM template
-        run: sam validate --template-file infra/template.yaml
+        run: sam validate --template-file infra/template.yaml --region "$AWS_REGION"
 
       - name: Initial SAM deploy
         run: |
-          sam build --template-file infra/template.yaml
+          sam build --template-file infra/template.yaml --region "$AWS_REGION"
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
             --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --no-confirm-changeset \
